@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Combined watchlist <span class="muted">({{ rows | length }})</span></h1>
+<p class="muted">As of each service's last fetch. "watchlist" means on the watchlist (Plan to Watch on Simkl); other values are the title's state outside it.</p>
+<div class="card scroll">
+<table>
+  <tr><th>Title</th><th>Year</th><th>Type</th>{% for s in services %}<th>{{ s | capitalize }}</th>{% endfor %}</tr>
+  {% for r in rows %}
+  <tr>
+    <td>{{ r.title.title or "(no title)" }}</td><td>{{ r.title.year or "" }}</td><td>{{ r.title.type }}</td>
+    {% for s in services %}
+    {% set p = r.presence.get(s) %}
+    <td class="{{ 'good' if p == 'watchlist' else ('bad' if p == 'unmatched' else 'muted') }}">{{ p or "–" }}</td>
+    {% endfor %}
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">Nothing fetched yet.</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}

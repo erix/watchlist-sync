@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Change log</h1>
+<p class="muted">Every add and remove the app attempted on a service.</p>
+<div class="card scroll">
+<table>
+  <tr><th>When</th><th>Run</th><th>Service</th><th>Action</th><th>Title</th><th>Result</th></tr>
+  {% for r in rows %}
+  <tr><td>{{ r.finished_at }}</td><td><a href="/runs/{{ r.run_id }}">#{{ r.run_id }}</a></td><td>{{ r.service }}</td>
+    <td>{{ r.action }}</td><td>{{ r.title or "(no title)" }} {% if r.year %}({{ r.year }}){% endif %}</td>
+    <td class="{{ 'good' if r.state == 'done' else 'bad' }}">{{ r.state }}{% if r.detail %}: {{ r.detail }}{% endif %}</td></tr>
+  {% else %}
+  <tr><td colspan="6" class="muted">No changes yet.</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}

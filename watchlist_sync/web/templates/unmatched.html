@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Unmatched</h1>
+<p class="muted">These titles could not be matched with certainty on the named service, so nothing was added there.
+Pick a candidate, enter the service's ID yourself, or ignore the title on that service. Matches you make are saved and reused.</p>
+
+{% for item in items %}
+{% set r = item.row %}{% set t = item.title %}
+<div class="card">
+  <p><strong>{{ t.title or "(no title)" }}</strong> {% if t.year %}({{ t.year }}){% endif %}
+    <span class="tag">{{ t.type }}</span> <span class="tag">not found on {{ r.service }}</span>
+    {% if r.state == "ignored" %}<span class="tag">ignored</span>{% endif %}</p>
+  <p class="muted">Known IDs: {% for ns, v in t.ids.items() %}{{ ns }}={{ v }}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</p>
+
+  {% if item.candidates %}
+  <div class="scroll"><table>
+    <tr><th>Candidate on {{ r.service }}</th><th>Year</th><th>IDs</th><th></th></tr>
+    {% for c in item.candidates %}
+    <tr><td>{{ c.title }}</td><td>{{ c.year or "" }}</td>
+      <td class="muted">{% for ns, v in c.ids.items() %}{{ ns }}={{ v }} {% endfor %}</td>
+      <td><form class="inline" method="post" action="/unmatched/{{ r.service }}/{{ r.title_id }}/link-candidate">
+        <input type="hidden" name="index" value="{{ loop.index0 }}"><button class="primary">This one</button></form></td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}
+  <p class="muted">The lookup returned no candidates.</p>
+  {% endif %}
+
+  <form method="post" action="/unmatched/{{ r.service }}/{{ r.title_id }}/link" style="margin-top:8px">
+    <input type="hidden" name="kind" value="{{ t.kind.value }}">
+    <select name="namespace">
+      <option value="{{ r.service }}">{{ r.service }} ID</option>
+      <option value="imdb">IMDb</option><option value="tmdb">TMDB</option><option value="tvdb">TVDB</option><option value="mal">MAL</option>
+    </select>
+    <input name="value" placeholder="ID" required>
+    <button>Link</button>
+  </form>
+  <p style="margin-top:8px">
+    <form class="inline" method="post" action="/unmatched/{{ r.service }}/{{ r.title_id }}/retry"><button>Look up again</button></form>
+    {% if r.state == "ignored" %}
+    <form class="inline" method="post" action="/unmatched/{{ r.service }}/{{ r.title_id }}/open"><button>Un-ignore</button></form>
+    {% else %}
+    <form class="inline" method="post" action="/unmatched/{{ r.service }}/{{ r.title_id }}/ignored"><button>Ignore on {{ r.service }}</button></form>
+    {% endif %}
+  </p>
+</div>
+{% else %}
+<p class="muted">Nothing unmatched.</p>
+{% endfor %}
+{% endblock %}

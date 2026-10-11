@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: watchlist-sync
+  namespace: watchlist-sync
+spec:
+  selector:
+    app.kubernetes.io/name: watchlist-sync
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

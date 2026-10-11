@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Conflicts</h1>
+<p class="muted">Each title below was added on one service and removed on another since the last sync. Nothing changes for it until you choose.</p>
+{% for item in items %}
+{% set r = item.row %}{% set t = item.title %}
+<div class="card">
+  <p><strong>{{ t.title or "(no title)" }}</strong> {% if t.year %}({{ t.year }}){% endif %} <span class="tag">{{ t.type }}</span></p>
+  <p>Added on <strong>{{ r.added_on }}</strong>, removed on <strong>{{ r.removed_on }}</strong>.</p>
+  {% if r.resolution %}
+  <p class="muted">Decision: {{ "keep on every watchlist" if r.resolution == "add" else "remove everywhere" }}. Applied on the next sync.</p>
+  {% else %}
+  <form class="inline" method="post" action="/conflicts/{{ r.title_id }}/add"><button class="primary">Keep everywhere</button></form>
+  <form class="inline" method="post" action="/conflicts/{{ r.title_id }}/remove"><button>Remove everywhere</button></form>
+  {% endif %}
+</div>
+{% else %}
+<p class="muted">No conflicts.</p>
+{% endfor %}
+{% endblock %}

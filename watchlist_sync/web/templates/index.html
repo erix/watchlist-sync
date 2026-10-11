@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Status</h1>
+
+{% if needs_approval %}
+<div class="warn">
+  A newly connected service syncs as a dry run until you approve its first plan.
+  {% if awaiting %}<a href="/runs/{{ awaiting.id }}">Review dry run #{{ awaiting.id }}</a>.{% endif %}
+</div>
+{% endif %}
+{% if settings.dry_run %}<div class="warn">WS_DRY_RUN is on: every sync is a dry run.</div>{% endif %}
+{% if unmatched %}<div class="warn"><a href="/unmatched">{{ unmatched }} unmatched title(s)</a> need a decision.</div>{% endif %}
+{% if conflicts %}<div class="warn"><a href="/conflicts">{{ conflicts }} conflict(s)</a> need a decision.</div>{% endif %}
+
+<div class="grid">
+{% for a in accounts %}
+  <div class="card">
+    <h2 style="margin-top:0">{{ a.service | capitalize }}</h2>
+    {% if not a.configured %}
+      <p class="muted">Not configured. Set {{ a.service | upper }}_CLIENT_ID.</p>
+    {% elif a.connected %}
+      <p class="good">Connected</p>
+      <p class="muted">Access token valid until {{ a.expires_at }}</p>
+      {% if a.warning %}<div class="warn">{{ a.warning }} {% if "renewing" in a.warning %}<a href="/connect/{{ a.service }}">Reconnect</a>{% endif %}</div>{% endif %}
+      <p>Last sync: {{ a.last_sync_at or "never" }}
+        {% if a.last_sync_status %}<span class="tag {{ 'good' if a.last_sync_status == 'ok' else 'bad' }}">{{ a.last_sync_status }}</span>{% endif %}</p>
+      {% if a.last_error %}<p class="bad">{{ a.last_error }}</p>{% endif %}
+      <form class="inline" method="post" action="/disconnect/{{ a.service }}"
+            onsubmit="return confirm('Disconnect {{ a.service }}? Its snapshot is discarded and the next connection starts with a dry run.')">
+        <button>Disconnect</button>
+      </form>
+    {% else %}
+      <p class="muted">Not connected</p>
+      <a class="button primary" href="/connect/{{ a.service }}">Connect {{ a.service | capitalize }}</a>
+    {% endif %}
+  </div>
+{% endfor %}
+</div>
+
+<div class="card">
+  <form class="inline" method="post" action="/sync"><button class="primary" {% if busy %}disabled{% endif %}>Sync now</button></form>
+  <form class="inline" method="post" action="/sync"><input type="hidden" name="dry_run" value="true"><button {% if busy %}disabled{% endif %}>Dry run</button></form>
+  <span class="muted">Automatic sync every {{ settings.interval_minutes }} minutes.</span>
+</div>
+
+<h2>Recent runs</h2>
+<div class="card scroll">
+<table>
+  <tr><th>#</th><th>Started</th><th>Kind</th><th>Status</th><th></th></tr>
+  {% for r in runs %}
+  <tr>
+    <td>{{ r.id }}</td><td>{{ r.started_at }}</td><td>{{ "dry run" if r.dry_run else "sync" }}</td>
+    <td><span class="{{ 'bad' if r.status == 'failed' else '' }}">{{ r.status }}</span>
+      {% if r.error %}<div class="bad">{{ r.error }}</div>{% endif %}</td>
+    <td>{% if r.plan_json %}<a href="/runs/{{ r.id }}">Plan</a>{% endif %}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No runs yet.</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endblock %}

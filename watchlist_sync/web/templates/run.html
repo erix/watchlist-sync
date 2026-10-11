@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Run #{{ run.id }} <span class="tag">{{ "dry run" if run.dry_run else "sync" }}</span> <span class="tag">{{ run.status }}</span></h1>
+<p class="muted">Started {{ run.started_at }}{% if run.finished_at %}, finished {{ run.finished_at }}{% endif %}</p>
+{% if run.error %}<p class="bad">{{ run.error }}</p>{% endif %}
+
+{% if run.status == "dry-run" %}
+<div class="card">
+  {% if plan.ops %}
+  <p>Nothing has been written. Approving applies exactly the {{ plan.ops | length }} change(s) below, each checked against the service first.</p>
+  {% else %}
+  <p>Nothing has been written, and there is nothing to change. Approving records the current state as the baseline.</p>
+  {% endif %}
+  <form method="post" action="/runs/{{ run.id }}/approve"><button class="primary" {% if busy %}disabled{% endif %}>Approve and apply</button></form>
+</div>
+{% endif %}
+
+<h2>Changes ({{ plan.ops | length }})</h2>
+<div class="card scroll">
+<table>
+  <tr><th>Service</th><th>Action</th><th>Title</th><th>Year</th><th>Type</th></tr>
+  {% for o in plan.ops | sort(attribute="service") %}
+  <tr><td>{{ o.service }}</td><td class="{{ 'bad' if o.action == 'remove' else 'good' }}">{{ o.action }}</td>
+      <td>{{ o.title or "(no title)" }}</td><td>{{ o.year or "" }}</td><td>{{ o.type }}</td></tr>
+  {% else %}
+  <tr><td colspan="5" class="muted">No changes.</td></tr>
+  {% endfor %}
+</table>
+</div>
+
+{% if plan.conflicts %}
+<h2>Conflicts ({{ plan.conflicts | length }})</h2>
+<div class="card scroll">
+<table>
+  <tr><th>Title</th><th>Added on</th><th>Removed on</th></tr>
+  {% for c in plan.conflicts %}
+  <tr><td>{{ c.title }} {% if c.year %}({{ c.year }}){% endif %}</td><td>{{ c.added_on | join(", ") }}</td><td>{{ c.removed_on | join(", ") }}</td></tr>
+  {% endfor %}
+</table>
+<p><a href="/conflicts">Resolve conflicts</a></p>
+</div>
+{% endif %}
+
+{% if plan.skips %}
+<h2>Left alone ({{ plan.skips | length }})</h2>
+<div class="card scroll">
+<table>
+  <tr><th>Service</th><th>Title</th><th>Reason</th></tr>
+  {% for s in plan.skips %}
+  <tr><td>{{ s.service }}</td><td>{{ s.title }} {% if s.year %}({{ s.year }}){% endif %}</td><td>{{ s.reason }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endif %}
+{% endblock %}

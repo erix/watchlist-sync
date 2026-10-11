@@ -1,0 +1,17 @@
+services:
+  watchlist-sync:
+    build: .
+    image: ghcr.io/erix/watchlist-sync:latest
+    ports:
+      - "8080:8080"
+    environment:
+      WS_BASE_URL: ${WS_BASE_URL:-http://localhost:8080}
+      WS_SYNC_INTERVAL_MINUTES: ${WS_SYNC_INTERVAL_MINUTES:-15}
+      WS_DRY_RUN: ${WS_DRY_RUN:-false}
+      TRAKT_CLIENT_ID: ${TRAKT_CLIENT_ID:-}
+      TRAKT_CLIENT_SECRET: ${TRAKT_CLIENT_SECRET:-}
+      SIMKL_CLIENT_ID: ${SIMKL_CLIENT_ID:-}
+      SIMKL_CLIENT_SECRET: ${SIMKL_CLIENT_SECRET:-}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

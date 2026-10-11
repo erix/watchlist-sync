@@ -1,0 +1,89 @@
+# Copy to erix/homelab at clusters/new/apps/watchlist-sync.yaml.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: watchlist-sync
+  namespace: flux-system
+spec:
+  interval: 1m
+  ref:
+    branch: main
+  url: https://github.com/erix/watchlist-sync
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: watchlist-sync
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./k8s/overlays/local
+  prune: true
+  wait: true
+  timeout: 3m
+  sourceRef:
+    kind: GitRepository
+    name: watchlist-sync
+  images:
+    - name: ghcr.io/erix/watchlist-sync
+      newTag: latest # {"$imagepolicy":"flux-system:watchlist-sync:tag"}
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: watchlist-sync
+      namespace: watchlist-sync
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: watchlist-sync
+  namespace: flux-system
+spec:
+  image: ghcr.io/erix/watchlist-sync
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: watchlist-sync
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: watchlist-sync
+  filterTags:
+    pattern: "^main-(?P<run>[0-9]+)-sha-[a-f0-9]{40}$"
+    extract: "$run"
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: watchlist-sync
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        email: fluxcdbot@users.noreply.github.com
+        name: fluxcdbot
+      messageTemplate: |
+        chore: update watchlist-sync image
+
+        Updated files:
+        {{- range $filename, $_ := .Updated.Files }}
+        - {{ $filename }}
+        {{- end }}
+    push:
+      branch: main
+  update:
+    path: ./clusters/new/apps
+    strategy: Setters

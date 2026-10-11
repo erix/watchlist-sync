@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watchlist-sync
+  namespace: watchlist-sync
+  labels:
+    app.kubernetes.io/name: watchlist-sync
+spec:
+  # SQLite has a single writer and the app owns token refresh: never run two pods.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: watchlist-sync
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: watchlist-sync
+    spec:
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: watchlist-sync
+          image: ghcr.io/erix/watchlist-sync:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: WS_BASE_URL
+              value: https://watchlists.erix-homelab.site
+            - name: WS_DATA_DIR
+              value: /data
+            - name: WS_SYNC_INTERVAL_MINUTES
+              value: "15"
+            - name: WS_DRY_RUN
+              value: "false"
+          envFrom:
+            - secretRef:
+                name: watchlist-sync-secret
+                optional: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: 96Mi
+              cpu: 20m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: watchlist-sync-data
