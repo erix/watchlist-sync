@@ -159,6 +159,7 @@ ADDED_COLUMNS = {
     "accounts": {
         "history_marker": "TEXT",
         "needs_history_dry_run": "INTEGER NOT NULL DEFAULT 1",
+        "history_since": "TEXT",
     },
 }
 
@@ -183,6 +184,7 @@ class Account:
     last_error: str | None
     history_marker: str | None
     needs_history_dry_run: bool
+    history_since: str | None
 
     @property
     def connected(self) -> bool:
@@ -301,6 +303,7 @@ class Store:
             activity_marker=None,
             needs_history_dry_run=1,
             history_marker=None,
+            history_since=None,
         )
 
     def disconnect(self, service: ServiceName) -> None:
@@ -308,7 +311,7 @@ class Store:
             c.execute(
                 "UPDATE accounts SET access_token=NULL, refresh_token=NULL, expires_at=NULL, scope=NULL,"
                 " auth_error=NULL, connected_at=NULL, activity_marker=NULL, needs_dry_run=1,"
-                " history_marker=NULL, needs_history_dry_run=1 WHERE service=?",
+                " history_marker=NULL, needs_history_dry_run=1, history_since=NULL WHERE service=?",
                 (service,),
             )
             for table in ("snapshots", "remote_items", "history_snapshots", "remote_history", "remote_history_opaque"):
@@ -482,9 +485,15 @@ class Store:
             return frozenset(r["title_id"] for r in rows)
 
     def replace_remote_history(
-        self, service: ServiceName, live: Mapping[WatchKey, str], opaque: frozenset[TitleId], marker: str
+        self,
+        service: ServiceName,
+        live: Mapping[WatchKey, str],
+        opaque: frozenset[TitleId],
+        since: str | None,
+        marker: str,
     ) -> None:
-        """Store a fresh fetch together with the marker it was read under."""
+        """Store a fresh fetch together with the account creation time and the
+        marker it was read under."""
         with self.tx() as c:
             c.execute("DELETE FROM remote_history WHERE service=?", (service,))
             c.executemany(
@@ -495,7 +504,7 @@ class Store:
             c.executemany(
                 "INSERT INTO remote_history_opaque(service, title_id) VALUES (?,?)", [(service, t) for t in opaque]
             )
-            c.execute("UPDATE accounts SET history_marker=? WHERE service=?", (marker, service))
+            c.execute("UPDATE accounts SET history_marker=?, history_since=? WHERE service=?", (marker, since, service))
 
     def history_snapshot(self, service: ServiceName) -> frozenset[WatchKey]:
         with self.tx() as c:

@@ -296,7 +296,7 @@ class Engine:
                 if key not in live or w.watched_at > live[key]:
                     live[key] = w.watched_at
             opaque = frozenset(title_of[_identity(i)] for i in state.opaque)
-            self.store.replace_remote_history(name, live, opaque, marker)
+            self.store.replace_remote_history(name, live, opaque, await adapter.account_created(), marker)
 
     def _resolve_all(self, items: list[RemoteItem]) -> dict[tuple, TitleId]:
         """Resolve each distinct item once: a history holds one item per play,
@@ -314,6 +314,7 @@ class Engine:
                 self.store.history_snapshot(s),
                 self.store.rejected_history(s),
                 self.store.opaque_history(s),
+                self.store.account(s).history_since,
             )
             for s in self.adapters
         }

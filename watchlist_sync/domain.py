@@ -164,12 +164,14 @@ class HistoryView:
     """What the history planner needs to know about one service. `rejected`
     holds keys the service answered "not found" for, so they are not resent
     every run. `opaque` holds shows whose watched episodes the service does not
-    list, so their episodes cannot be told apart from unwatched ones."""
+    list, so their episodes cannot be told apart from unwatched ones. `since`
+    is when the account was created there, if known."""
 
     live: Mapping[WatchKey, str]
     snapshot: frozenset[WatchKey]
     rejected: frozenset[WatchKey] = frozenset()
     opaque: frozenset[TitleId] = frozenset()
+    since: str | None = None
 
 
 @dataclass(frozen=True)

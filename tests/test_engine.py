@@ -7,7 +7,7 @@ from tests.fakes import Crash, Entry, FakeService
 from watchlist_sync.db import Store
 from watchlist_sync.domain import Action, Kind
 from watchlist_sync.engine import Engine
-from watchlist_sync.history import OPAQUE
+from watchlist_sync.history import IMPORTED, OPAQUE
 
 MOVIES = [
     ("Arrival", 2016, "tt2543164", "329865"),
@@ -367,6 +367,24 @@ def test_show_simkl_does_not_list_episodes_of_gets_no_simkl_adds(tmp_path):
         assert simkl.history_writes == [] and trakt.history_writes == []
         assert history_of(store, run)["skip_reasons"] == {OPAQUE: 2}
     assert simkl.history_fetches == fetches, "second run refetched Simkl with an unchanged marker"
+
+
+def test_plays_imported_before_the_simkl_account_existed_stay_on_simkl(world):
+    store, engine, trakt, simkl = world
+    approve_history(store)
+    simkl.joined_at = "2026-10-11T11:47:33Z"
+    simkl.user_watch("s0", "2016-03-01T00:00:00Z")
+    simkl.user_watch("s1", "2026-10-12T20:00:00Z")
+
+    sync(engine)
+    reads = simkl.account_reads
+    trakt.user_watch("t2", JAN)
+    run = sync(engine)
+
+    assert simkl.account_reads == reads, "Simkl was read again with an unchanged marker"
+    assert trakt.history_writes == [("t1", None, None, "2026-10-12T20:00:00Z")]
+    assert simkl.history_writes == [("s2", None, None, JAN)]
+    assert [s["reason"] for s in history_of(store, run)["skips"]] == [IMPORTED.format(services="simkl")]
 
 
 def test_anime_history_is_reported_and_not_written(tmp_path):

@@ -203,6 +203,12 @@ class SimklAdapter:
                 opaque.append(item)
         return HistoryState(watches, opaque)
 
+    async def account_created(self) -> str | None:
+        # Simkl's import invents plays: rated-only movies become completed, and
+        # every episode before the latest watched one is filled in.
+        data = (await self.api.call("POST", "/users/settings")).json() or {}
+        return (data.get("user") or {}).get("joined_at")
+
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()
         for start in range(0, len(entries), BATCH):

@@ -154,6 +154,10 @@ class TraktAdapter:
                 page += 1
         return HistoryState(watches)
 
+    async def account_created(self) -> str | None:
+        # Trakt is where the history was recorded; nothing on it is an import.
+        return None
+
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()
         for start in range(0, len(entries), BATCH):

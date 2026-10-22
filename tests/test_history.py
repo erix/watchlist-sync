@@ -1,5 +1,5 @@
 from watchlist_sync.domain import HistoryOp, HistoryView, WatchKey
-from watchlist_sync.history import ANIME, OPAQUE, SPECIALS, next_history_snapshot, plan_history
+from watchlist_sync.history import ANIME, IMPORTED, OPAQUE, SPECIALS, next_history_snapshot, plan_history
 
 MOVIE = WatchKey(1)
 EPISODE = WatchKey(2, 1, 3)
@@ -111,6 +111,38 @@ def test_show_moving_to_an_unlisted_status_adds_nothing_anywhere():
         "simkl": HistoryView({}, snapshots["simkl"], opaque=frozenset({EPISODE.title_id})),
     }
     assert plan_history(views, set(), anywhere).ops == ()
+
+
+JOINED = "2026-10-11T11:47:33Z"
+
+
+def test_play_dated_before_the_simkl_account_existed_is_not_copied_to_trakt():
+    imported, real = WatchKey(3, 1, 1), WatchKey(3, 1, 2)
+    views = {
+        "trakt": HistoryView({}, frozenset()),
+        "simkl": HistoryView({imported: "2016-03-01T00:00:00Z", real: "2026-10-12T20:00:00Z"}, frozenset(), since=JOINED),
+    }
+    result = plan_history(views, set(), anywhere)
+    assert result.ops == (HistoryOp("trakt", real, "2026-10-12T20:00:00Z"),)
+    assert [(s.service, s.key, s.reason) for s in result.skips] == [("trakt", imported, IMPORTED.format(services="simkl"))]
+
+
+def test_date_comes_only_from_services_whose_play_is_not_imported():
+    views = {
+        "trakt": HistoryView({MOVIE: "2024-01-01T09:00:00.000Z"}, frozenset()),
+        "simkl": HistoryView({MOVIE: "2025-06-01T00:00:00Z"}, frozenset(), since=JOINED),
+        "other": HistoryView({}, frozenset()),
+    }
+    assert plan_history(views, set(), anywhere).ops == (HistoryOp("other", MOVIE, "2024-01-01T09:00:00.000Z"),)
+
+
+def test_latest_watched_at_compares_instants_not_strings():
+    views = {
+        "trakt": HistoryView({MOVIE: "2024-01-01T09:00:00.500Z"}, frozenset()),
+        "simkl": HistoryView({MOVIE: "2024-01-01T09:00:00Z"}, frozenset()),
+        "other": HistoryView({}, frozenset()),
+    }
+    assert plan_history(views, set(), anywhere).ops == (HistoryOp("other", MOVIE, "2024-01-01T09:00:00.500Z"),)
 
 
 def test_nothing_to_do_when_both_services_agree():

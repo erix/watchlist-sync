@@ -287,6 +287,14 @@ def test_simkl_history_reads_completed_movies_and_watched_episodes():
     assert (calls[1].url.params["extended"], calls[1].url.params["episode_watched_at"]) == ("full", "yes")
 
 
+def test_simkl_account_created_reads_joined_at_from_settings():
+    adapter = SimklAdapter("cid", Tokens())
+    settings = {"user": {"name": "erik", "joined_at": "2026-10-11T11:47:33Z"}, "account": {"id": 1}}
+    calls = wire(adapter, lambda r: httpx.Response(200, json=settings))
+    assert asyncio.run(adapter.account_created()) == "2026-10-11T11:47:33Z"
+    assert [(c.method, c.url.path) for c in calls] == [("POST", "/users/settings")]
+
+
 def test_simkl_history_marker_uses_the_all_timestamps():
     adapter = SimklAdapter("cid", Tokens())
     activities = {"all": "x", "movies": {"all": "m", "completed": "c"}, "tv_shows": {"all": "t"}, "anime": {"all": "a"}}

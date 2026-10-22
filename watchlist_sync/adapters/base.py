@@ -50,6 +50,11 @@ class Adapter(Protocol):
 
     async def fetch_history(self) -> HistoryState: ...
 
+    async def account_created(self) -> str | None:
+        """When the account was created, if plays dated earlier can only have
+        come from an import; None if every play is trusted."""
+        ...
+
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         """Mark each (title, key, watched_at) watched; return the keys that landed."""
         ...

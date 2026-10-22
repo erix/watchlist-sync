@@ -51,6 +51,8 @@ class FakeService:
         self.history_crash_after: int | None = None
         # Shows counted as watched whose episodes are not listed.
         self.opaque: set[str] = set()
+        self.joined_at: str | None = None
+        self.account_reads = 0
 
     # The user acting on the service directly.
 
@@ -116,6 +118,10 @@ class FakeService:
             [RemoteWatch(self._item(n, "watchlist"), s, e, at) for (n, s, e), at in sorted(self.plays.items(), key=str)],
             [self._item(n, "watchlist") for n in sorted(self.opaque)],
         )
+
+    async def account_created(self) -> str | None:
+        self.account_reads += 1
+        return self.joined_at
 
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()
