@@ -3,8 +3,7 @@ kind: Kustomization
 namespace: watchlist-sync
 resources:
   - ../../base
-  # Add the sealed secret here once created (see README):
-  # - watchlist-sync-sealed.yaml
+  - watchlist-sync-sealed.yaml
 images:
   - name: ghcr.io/erix/watchlist-sync
     newTag: latest
