@@ -18,6 +18,18 @@ Keeps one watchlist in sync across Trakt and Simkl. It is a single-user web app 
 - **Cheap polling.** Each sync first reads Trakt's `/sync/last_activities` and Simkl's `/sync/activities`. A service's full list is downloaded only when its timestamps moved. Requests are paced to 1 POST per second on both services. A `429` response is retried after `Retry-After`, or with exponential backoff when that header is missing.
 - **First sync is a dry run.** After you connect a service, syncs are dry runs until you approve one. Approving applies exactly the changes that dry run showed.
 
+### Watch history
+
+- **Plays sync both ways.** A movie or episode watched on one service and not the other is marked watched on the other, with its original watch date.
+- **History is add-only.** The app never removes a play anywhere.
+- **Un-watching is respected.** If a service had a play at an earlier sync and no longer has it, you un-watched it there. The app does not add it back to that service, and does not remove it from the other. The run lists it under "unwatched".
+- **Watched at least once.** The app syncs whether you watched something, not how many times. It never adds a second play of something a service already has.
+- **Anime is left out.** Simkl numbers anime episodes differently from Trakt, so anime plays are listed as skipped and not written.
+- **Titles need a writable ID.** History never looks titles up by name. A play whose title has no ID the other service accepts is listed as skipped.
+- **First history sync is a dry run.** History has its own approval, separate from the watchlist's. Until you approve a run's history, each run shows the plays it would add and writes none of them. The watchlist part of those runs still applies. Approving adds exactly the plays that run showed. After that, history syncs on every run.
+- **Watching moves a show out of Plan to Watch.** When the app marks an episode watched on Simkl, Simkl moves the show from Plan to Watch to Watching. By the rule above, the next sync removes it from your Trakt watchlist.
+- **Cheap and safe like the watchlist.** A service's history is downloaded only when its watch timestamps moved. History writes go through their own outbox. A resumed write first checks the service, so a crash never adds a duplicate play.
+
 ## Register the API apps
 
 Both services redirect your browser back to the app after login. The redirect URL must match character for character, with no trailing slash.
@@ -66,6 +78,7 @@ All state lives in `/data/watchlist.db` on the `watchlist-sync-data` PVC. That i
 2. Click **Dry run** or wait for the next scheduled sync. Nothing is written yet.
 3. Open the dry run's plan. Check the changes, the conflicts, and the "Left alone" list.
 4. Click **Approve and apply**. Later syncs apply changes automatically.
+5. Watch history waits for its own approval. Open the run linked from the Status page, check its History section, and click **Approve and apply**.
 
 To keep every sync a dry run, set `WS_DRY_RUN=true`.
 
@@ -101,7 +114,8 @@ Write an adapter that implements `Adapter` and `OAuthClient` in `watchlist_sync/
 ## Code map
 
 - `watchlist_sync/planner.py` is the pure planning logic: diffs, conflicts, and what to add or remove where.
-- `watchlist_sync/engine.py` runs a sync: it reads the services, resumes unfinished writes, links titles across services, applies the plan, and commits snapshots.
+- `watchlist_sync/history.py` is the pure watch-history planning: which plays to add where, and the history snapshot.
+- `watchlist_sync/engine.py` runs a sync: it reads the services, resumes unfinished writes, links titles across services, applies the plan, and commits snapshots. Then it does the same for watch history.
 - `watchlist_sync/db.py` holds the SQLite schema and the store, including title merging.
 - `watchlist_sync/adapters/` holds the Trakt and Simkl adapters and the paced HTTP client.
 - `tests/test_engine.py` runs the sync scenarios against fake services: one-sided add and remove, conflict, echo, a crash halfway through, and the Chef's Table: Pizza ID mismatch.
