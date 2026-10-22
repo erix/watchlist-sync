@@ -109,9 +109,15 @@ chown 10001:10001 /mnt/tank/backups/watchlist-sync
 chmod 700 /mnt/tank/backups/watchlist-sync
 ```
 
+The CronJob carries the `alerts.erix-homelab.site/max-age: 26h` annotation, so the homelab alerts watcher emails when no backup has succeeded for 26 hours.
+
 To run a backup now: `kubectl -n watchlist-sync create job --from=cronjob/watchlist-sync-backup backup-now`.
 
 To restore, scale the Deployment to 0, copy a backup over `/data/watchlist.db` on the `watchlist-sync-data` volume, delete any `watchlist.db-wal` and `watchlist.db-shm` next to it, and scale back to 1. The next sync re-reads any service that changed since the backup. A Trakt token refreshed since the backup no longer works, so reconnect Trakt if the status page asks.
+
+## Monitoring
+
+`/healthz` only says the web server is up. `/healthz/sync` returns 503 with a list of problems when a service's login needs renewing, or when two sync intervals and 10 minutes have passed without a successful sync. A single failed run is not reported, because the next run usually fixes it. Services still awaiting their first approval are not checked.
 
 ## Rate limits and quotas
 

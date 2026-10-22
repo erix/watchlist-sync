@@ -33,6 +33,9 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: watchlist-sync-backup
+  annotations:
+    # Picked up by the homelab alerts watcher: email if no success within this window.
+    alerts.erix-homelab.site/max-age: 26h
 spec:
   schedule: "30 3 * * *"
   concurrencyPolicy: Forbid

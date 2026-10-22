@@ -9,13 +9,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from ..adapters.base import AuthExpired, Token, pkce_pair
 from ..adapters.simkl import ISSUER as SIMKL_ISSUER
 from ..config import Settings
 from ..domain import Action, Kind
+from ..health import sync_problems
 from ..runtime import Runtime
 
 log = logging.getLogger(__name__)
@@ -44,6 +45,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict:
         return {"ok": True}
+
+    @app.get("/healthz/sync")
+    def sync_health() -> JSONResponse:
+        accounts = {s: store.account(s) for s in runtime.oauth}
+        interval = timedelta(minutes=runtime.settings.interval_minutes)
+        problems = sync_problems(accounts, interval, datetime.now(UTC))
+        return JSONResponse({"ok": not problems, "problems": problems}, status_code=503 if problems else 200)
 
     @app.get("/", response_class=HTMLResponse)
     def index(request: Request):
