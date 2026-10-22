@@ -1,5 +1,5 @@
 from watchlist_sync.domain import HistoryOp, HistoryView, WatchKey
-from watchlist_sync.history import ANIME, OPAQUE, next_history_snapshot, plan_history
+from watchlist_sync.history import ANIME, OPAQUE, SPECIALS, next_history_snapshot, plan_history
 
 MOVIE = WatchKey(1)
 EPISODE = WatchKey(2, 1, 3)
@@ -55,6 +55,17 @@ def test_anime_is_skipped():
     )
     assert result.ops == ()
     assert [(s.service, s.key, s.reason) for s in result.skips] == [("simkl", EPISODE, ANIME)]
+
+
+def test_specials_are_skipped():
+    special = WatchKey(2, 0, 1)
+    result = plan_history(
+        {"trakt": HistoryView({special: "2024-01-01T00:00:00Z"}, frozenset()), "simkl": HistoryView({}, frozenset())},
+        set(),
+        anywhere,
+    )
+    assert result.ops == ()
+    assert [(s.service, s.key, s.reason) for s in result.skips] == [("simkl", special, SPECIALS)]
 
 
 def test_title_without_an_id_the_service_accepts_is_skipped():

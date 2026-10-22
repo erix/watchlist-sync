@@ -25,6 +25,7 @@ Keeps one watchlist in sync across Trakt and Simkl. It is a single-user web app 
 - **Un-watching is respected.** If a service had a play at an earlier sync and no longer has it, you un-watched it there. The app does not add it back to that service, and does not remove it from the other. The run lists it under "unwatched".
 - **Watched at least once.** The app syncs whether you watched something, not how many times. It never adds a second play of something a service already has.
 - **Anime is left out.** Simkl numbers anime episodes differently from Trakt, so anime plays are listed as skipped and not written.
+- **Specials are left out.** Season 0 is numbered differently on each service, so specials are listed as skipped and not written.
 - **Some Simkl shows hide their episodes.** Simkl counts episodes of a show as watched but does not list which ones for some shows, such as Completed and Dropped ones. The app adds no episodes of such a show to Simkl, and does not copy its episodes to Trakt.
 - **Titles need a writable ID.** History never looks titles up by name. A play whose title has no ID the other service accepts is listed as skipped.
 - **First history sync is a dry run.** History has its own approval, separate from the watchlist's. Until you approve a run's history, each run shows the plays it would add and writes none of them. The watchlist part of those runs still applies. Approving adds exactly the plays that run showed. After that, history syncs on every run.

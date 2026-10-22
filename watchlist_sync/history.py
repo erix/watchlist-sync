@@ -10,6 +10,7 @@ from .domain import HistoryOp, HistoryPlan, HistorySkip, HistoryView, ServiceNam
 
 ANIME = "anime is not history-synced: Simkl numbers its episodes differently"
 OPAQUE = "Simkl lists no episodes for this show but counts them watched"
+SPECIALS = "specials are not history-synced: services number them differently"
 
 
 def plan_history(
@@ -34,6 +35,8 @@ def plan_history(
                 continue
             if key.season is not None and key.title_id in v.opaque:
                 skips.append(HistorySkip(s, key, OPAQUE))
+            elif key.season == 0:
+                skips.append(HistorySkip(s, key, SPECIALS))
             elif key in v.snapshot:
                 skips.append(HistorySkip(s, key, f"unwatched on {s}"))
             elif key.title_id in anime:
