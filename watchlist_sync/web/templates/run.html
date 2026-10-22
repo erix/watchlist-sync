@@ -4,12 +4,21 @@
 <p class="muted">Started {{ run.started_at }}{% if run.finished_at %}, finished {{ run.finished_at }}{% endif %}</p>
 {% if run.error %}<p class="bad">{{ run.error }}</p>{% endif %}
 
-{% if run.status == "dry-run" %}
+{% set history = plan.history %}
+{% set history_pending = history and history.dry_run and (run.status == "dry-run" or history_awaiting) %}
+{% if run.status == "dry-run" or history_pending %}
 <div class="card">
+  {% if run.status == "dry-run" %}
   {% if plan.ops %}
   <p>Nothing has been written. Approving applies exactly the {{ plan.ops | length }} change(s) below, each checked against the service first.</p>
   {% else %}
   <p>Nothing has been written, and there is nothing to change. Approving records the current state as the baseline.</p>
+  {% endif %}
+  {% endif %}
+  {% if history_pending %}
+  <p>History sync awaits approval{% if run.status != "dry-run" %}; this run's watchlist changes are already applied{% endif %}.
+    Approving marks exactly the {{ history.ops | length }} play(s) under History as watched, with their original watch dates.
+    Plays already on the service are not added again.</p>
   {% endif %}
   <form method="post" action="/runs/{{ run.id }}/approve"><button class="primary" {% if busy %}disabled{% endif %}>Approve and apply</button></form>
 </div>
@@ -51,5 +60,47 @@
   {% endfor %}
 </table>
 </div>
+{% endif %}
+
+{% if history %}
+{% set shown = 500 %}
+{% set skipped = history.skip_reasons.values() | sum %}
+<h2>History {% if history.dry_run %}<span class="tag">not applied</span>{% endif %}</h2>
+<div class="card">
+  <p>Plays to add:
+    {% for service, n in history.adds | dictsort %}{{ service }} {{ n }}{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}.</p>
+  {% if skipped %}
+  <p>Left alone ({{ skipped }}):
+    {% for reason, n in history.skip_reasons | dictsort %}{{ reason }} ({{ n }}){% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  {% endif %}
+</div>
+
+{% macro episode(e) %}{% if e.season is not none %}S{{ "%02d" | format(e.season) }}E{{ "%02d" | format(e.episode) }}{% endif %}{% endmacro %}
+
+<div class="card scroll">
+<table>
+  <tr><th>Service</th><th>Title</th><th>Episode</th><th>Watched at</th></tr>
+  {% for o in history.ops[:shown] %}
+  <tr><td>{{ o.service }}</td><td>{{ o.title or "(no title)" }} {% if o.year %}({{ o.year }}){% endif %}</td>
+      <td>{{ episode(o) }}</td><td>{{ o.watched_at }}</td></tr>
+  {% else %}
+  <tr><td colspan="4" class="muted">No plays to add.</td></tr>
+  {% endfor %}
+</table>
+{% if history.ops | length > shown %}<p class="muted">{{ history.ops | length - shown }} more not shown.</p>{% endif %}
+</div>
+
+{% if history.skips %}
+<div class="card scroll">
+<table>
+  <tr><th>Service</th><th>Title</th><th>Episode</th><th>Reason</th></tr>
+  {% for s in history.skips[:shown] %}
+  <tr><td>{{ s.service }}</td><td>{{ s.title or "(no title)" }} {% if s.year %}({{ s.year }}){% endif %}</td>
+      <td>{{ episode(s) }}</td><td>{{ s.reason }}</td></tr>
+  {% endfor %}
+</table>
+{% if skipped > history.skips[:shown] | length %}<p class="muted">{{ skipped - history.skips[:shown] | length }} more not shown.</p>{% endif %}
+</div>
+{% endif %}
 {% endif %}
 {% endblock %}

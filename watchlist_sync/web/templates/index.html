@@ -8,6 +8,12 @@
   {% if awaiting %}<a href="/runs/{{ awaiting.id }}">Review dry run #{{ awaiting.id }}</a>.{% endif %}
 </div>
 {% endif %}
+{% if history_awaiting %}
+<div class="warn">
+  History sync awaits approval: no plays are marked watched until you approve one run's history.
+  {% if history_run %}<a href="/runs/{{ history_run.id }}">Review run #{{ history_run.id }}</a>.{% endif %}
+</div>
+{% elif any_connected %}<p class="muted">History sync is on: plays are added automatically each run.</p>{% endif %}
 {% if settings.dry_run %}<div class="warn">WS_DRY_RUN is on: every sync is a dry run.</div>{% endif %}
 {% if unmatched %}<div class="warn"><a href="/unmatched">{{ unmatched }} unmatched title(s)</a> need a decision.</div>{% endif %}
 {% if conflicts %}<div class="warn"><a href="/conflicts">{{ conflicts }} conflict(s)</a> need a decision.</div>{% endif %}

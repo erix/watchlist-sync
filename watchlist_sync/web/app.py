@@ -51,6 +51,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         runs = store.runs(10)
         awaiting = next((r for r in runs if r["status"] == "dry-run"), None)
         needs_approval = any(a["connected"] and a["needs_dry_run"] for a in accounts)
+        history_awaiting = _history_awaiting(store)
+        history_run = next((r for r in runs if r["status"] != "failed" and _history_dry_run(r)), None)
         return render(
             request,
             "index.html",
@@ -58,6 +60,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             runs=runs,
             awaiting=awaiting,
             needs_approval=needs_approval,
+            history_awaiting=history_awaiting,
+            history_run=history_run,
+            any_connected=any(a["connected"] for a in accounts),
             settings=runtime.settings,
             unmatched=sum(1 for r in store.unmatched() if r["state"] == "open"),
             conflicts=sum(1 for r in store.conflicts() if r["resolution"] is None),
@@ -74,7 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(404)
         plan = json.loads(run["plan_json"]) if run["plan_json"] else {"ops": [], "conflicts": [], "skips": []}
-        return render(request, "run.html", run=run, plan=plan)
+        return render(request, "run.html", run=run, plan=plan, history_awaiting=_history_awaiting(store))
 
     @app.post("/runs/{run_id}/approve")
     async def approve(run_id: int):
@@ -190,6 +195,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return render(request, "log.html", rows=store.change_log(500))
 
     return app
+
+
+def _history_awaiting(store) -> bool:
+    return any(a.connected and a.needs_history_dry_run for a in map(store.account, SERVICES))
+
+
+def _history_dry_run(run) -> bool:
+    return bool(run["plan_json"] and (json.loads(run["plan_json"]).get("history") or {}).get("dry_run"))
 
 
 def _account_view(account, configured: bool) -> dict:
