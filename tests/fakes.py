@@ -6,7 +6,9 @@ from watchlist_sync.domain import (
     Kind,
     RemoteItem,
     RemoteState,
+    RemoteWatch,
     Title,
+    WatchKey,
     WriteResult,
     normalize_title,
 )
@@ -24,6 +26,7 @@ class Entry:
     title: str | None
     year: int | None
     ids: dict[str, str] = field(default_factory=dict)
+    anime: bool = False
 
 
 class FakeService:
@@ -39,6 +42,12 @@ class FakeService:
         self.version = 0
         self.writes: list[tuple[str, str]] = []
         self.crash_after: int | None = None
+        # Watch history: (native, season, episode) -> watched_at.
+        self.plays: dict[tuple[str, int | None, int | None], str] = {}
+        self.history_version = 0
+        self.history_fetches = 0
+        self.history_writes: list[tuple[str, int | None, int | None, str]] = []
+        self.history_crash_after: int | None = None
 
     # The user acting on the service directly.
 
@@ -55,6 +64,14 @@ class FakeService:
         self.watchlist.discard(native)
         self.elsewhere[native] = status
         self.version += 1
+
+    def user_watch(self, native: str, watched_at: str, season: int | None = None, episode: int | None = None) -> None:
+        self.plays[(native, season, episode)] = watched_at
+        self.history_version += 1
+
+    def user_unwatch(self, native: str, season: int | None = None, episode: int | None = None) -> None:
+        del self.plays[(native, season, episode)]
+        self.history_version += 1
 
     # Adapter protocol.
 
@@ -86,6 +103,27 @@ class FakeService:
 
     def can_address(self, title: Title) -> bool:
         return bool(title.ids.get(self.name)) or any(title.ids.get(ns) for ns in SHARED_NAMESPACES)
+
+    async def history_marker(self) -> str:
+        return str(self.history_version)
+
+    async def fetch_history(self) -> list[RemoteWatch]:
+        self.history_fetches += 1
+        return [RemoteWatch(self._item(n, "watchlist"), s, e, at) for (n, s, e), at in sorted(self.plays.items(), key=str)]
+
+    async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
+        landed: set[WatchKey] = set()
+        for done, (title, key, watched_at) in enumerate(entries):
+            if self.history_crash_after is not None and done >= self.history_crash_after:
+                raise Crash(f"{self.name} crashed after {done} history writes")
+            entry = next((e for e in self.catalog.values() if self._matches(e, title)), None)
+            if entry is None:
+                continue
+            self.history_writes.append((entry.native, key.season, key.episode, watched_at))
+            self.plays[(entry.native, key.season, key.episode)] = watched_at
+            self.history_version += 1
+            landed.add(key)
+        return landed
 
     # Internals.
 
@@ -122,6 +160,7 @@ class FakeService:
             ids={self.name: native, **e.ids},
             title=e.title,
             year=e.year,
+            anime=e.anime,
             status=status,
             has_history=native in self.history,
         )

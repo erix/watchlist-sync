@@ -248,3 +248,116 @@ def test_connecting_a_second_service_later_fills_it_without_removing_anything(wo
     sync(engine)
     assert trakt.watchlist == {"t0", "t1"}
     assert simkl.watchlist == {"s0", "s1"}
+
+
+JAN = "2024-01-01T20:00:00Z"
+FEB = "2024-02-01T20:00:00Z"
+
+
+def history_of(store, run_id):
+    return plan_of(store, run_id)["history"]
+
+
+def approve_history(store):
+    for s in ("trakt", "simkl"):
+        store.update_account(s, needs_history_dry_run=0)
+
+
+def test_first_history_sync_is_a_dry_run_while_the_watchlist_still_syncs(world):
+    store, engine, trakt, simkl = world
+    trakt.user_watch("t0", JAN)
+    simkl.user_watch("s1", FEB)
+    trakt.user_add("t2")
+
+    for _ in range(2):
+        run = sync(engine)
+        assert store.run(run)["status"] == "ok"
+        assert history_of(store, run)["dry_run"] is True
+        assert {(o["service"], o["title"], o["watched_at"]) for o in history_of(store, run)["ops"]} == {
+            ("simkl", "Arrival", JAN),
+            ("trakt", "Dune", FEB),
+        }
+        assert trakt.history_writes == [] and simkl.history_writes == []
+        assert simkl.watchlist == {"s2"}
+
+
+def test_approving_history_applies_exactly_the_shown_plays(world):
+    store, engine, trakt, simkl = world
+    trakt.user_watch("t0", JAN)
+    simkl.user_watch("s1", FEB)
+    run = sync(engine)
+    trakt.user_watch("t3", FEB)
+
+    approval = asyncio.run(engine.approve(run))
+
+    assert simkl.history_writes == [("s0", None, None, JAN)]
+    assert trakt.history_writes == [("t1", None, None, FEB)]
+    assert not store.account("trakt").needs_history_dry_run
+    assert history_of(store, approval)["dry_run"] is False
+
+    run = sync(engine)
+    assert history_of(store, run)["dry_run"] is False
+    assert simkl.history_writes == [("s0", None, None, JAN), ("s3", None, None, FEB)]
+
+
+def test_own_history_writes_are_not_read_back_and_unwatches_stick(world):
+    store, engine, trakt, simkl = world
+    approve_history(store)
+    trakt.user_watch("t0", JAN)
+    sync(engine)
+    assert simkl.plays == {("s0", None, None): JAN}
+
+    fetches = (trakt.history_fetches, simkl.history_fetches)
+    sync(engine)
+    run = sync(engine)
+    assert history_of(store, run)["ops"] == []
+    assert len(simkl.history_writes) == 1 and trakt.history_writes == []
+    # Simkl's marker moved once, from the app's own write; nothing else is refetched.
+    assert (trakt.history_fetches, simkl.history_fetches) == (fetches[0], fetches[1] + 1)
+
+    simkl.user_unwatch("s0")
+    for _ in range(3):
+        run = sync(engine)
+        assert history_of(store, run)["ops"] == []
+    assert simkl.plays == {} and trakt.plays == {("t0", None, None): JAN}
+    assert history_of(store, run)["skip_reasons"] == {"unwatched on simkl": 1}
+
+
+def test_history_crash_halfway_resumes_without_duplicate_plays_and_keeps_the_watchlist(world):
+    store, engine, trakt, simkl = world
+    approve_history(store)
+    for i, n in enumerate(("t0", "t1", "t2", "t3")):
+        trakt.user_watch(n, f"2024-01-0{i + 1}T00:00:00Z")
+    trakt.user_add("t0")
+    simkl.history_crash_after = 2
+
+    with pytest.raises(Crash):
+        sync(engine)
+    failed = store.runs(1)[0]
+    assert failed["status"] == "failed"
+    assert [o["title"] for o in json.loads(failed["plan_json"])["ops"]] == ["Arrival"]
+    assert simkl.watchlist == {"s0"}
+    assert {n for n, _, _ in simkl.plays} == {"s0", "s1"}
+
+    simkl.history_crash_after = None
+    run = sync(engine)
+
+    assert plan_of(store, run)["ops"] == []
+    assert sorted(n for n, _, _, _ in simkl.history_writes) == ["s0", "s1", "s2", "s3"]
+    assert simkl.plays[("s3", None, None)] == "2024-01-04T00:00:00Z"
+
+
+def test_anime_history_is_reported_and_not_written(tmp_path):
+    trakt = FakeService("trakt", [Entry("t-frieren", Kind.SHOW, "Frieren", 2023, {"tvdb": "424536"})])
+    simkl = FakeService("simkl", [Entry("s-frieren", Kind.SHOW, "Frieren", 2023, {"tvdb": "424536"}, anime=True)])
+    store = Store(tmp_path / "anime.db")
+    for s in ("trakt", "simkl"):
+        store.connect(s, "access", "refresh", "2099-01-01T00:00:00+00:00", None)
+        store.update_account(s, needs_dry_run=0, needs_history_dry_run=0)
+    simkl.user_move("s-frieren", "watching")
+    trakt.user_watch("t-frieren", JAN, season=1, episode=1)
+
+    run = asyncio.run(Engine(store, {"trakt": trakt, "simkl": simkl}).sync())
+
+    assert simkl.history_writes == []
+    assert [(s["service"], s["season"], s["episode"]) for s in history_of(store, run)["skips"]] == [("simkl", 1, 1)]
