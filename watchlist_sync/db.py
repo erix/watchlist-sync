@@ -5,7 +5,7 @@ import sqlite3
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .domain import Action, HistoryOp, Kind, Op, RemoteItem, ServiceName, Title, TitleId, WatchKey
@@ -162,6 +162,9 @@ ADDED_COLUMNS = {
         "history_since": "TEXT",
     },
 }
+
+
+RUN_RETENTION = timedelta(days=30)
 
 
 def now() -> str:
@@ -427,6 +430,17 @@ class Store:
     def run(self, run_id: int) -> sqlite3.Row | None:
         with self.tx() as c:
             return c.execute("SELECT * FROM sync_runs WHERE id=?", (run_id,)).fetchone()
+
+    def prune_runs(self, older_than: timedelta = RUN_RETENTION) -> None:
+        """Delete finished runs past retention. Runs that wrote anything stay:
+        the change log points at them."""
+        cutoff = (datetime.now(UTC) - older_than).isoformat(timespec="seconds")
+        with self.tx() as c:
+            c.execute(
+                "DELETE FROM sync_runs WHERE finished_at < ?"
+                " AND id NOT IN (SELECT run_id FROM ops) AND id NOT IN (SELECT run_id FROM history_ops)",
+                (cutoff,),
+            )
 
     def runs(self, limit: int = 20) -> list[sqlite3.Row]:
         with self.tx() as c:

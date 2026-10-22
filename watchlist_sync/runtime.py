@@ -60,7 +60,9 @@ class Runtime:
         async with self._lock, self.engine() as engine:
             if engine is None:
                 return None
-            return await engine.sync(dry_run=dry_run or self.settings.dry_run)
+            run_id = await engine.sync(dry_run=dry_run or self.settings.dry_run)
+            self.store.prune_runs()
+            return run_id
 
     async def approve(self, run_id: int) -> int | None:
         async with self._lock, self.engine() as engine:

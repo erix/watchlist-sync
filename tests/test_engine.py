@@ -7,7 +7,7 @@ from tests.fakes import Crash, Entry, FakeService
 from watchlist_sync.db import Store
 from watchlist_sync.domain import Action, Kind
 from watchlist_sync.engine import Engine
-from watchlist_sync.history import IMPORTED, OPAQUE
+from watchlist_sync.history import ANIME, IMPORTED, OPAQUE
 
 MOVIES = [
     ("Arrival", 2016, "tt2543164", "329865"),
@@ -400,4 +400,19 @@ def test_anime_history_is_reported_and_not_written(tmp_path):
     run = asyncio.run(Engine(store, {"trakt": trakt, "simkl": simkl}).sync())
 
     assert simkl.history_writes == []
-    assert [(s["service"], s["season"], s["episode"]) for s in history_of(store, run)["skips"]] == [("simkl", 1, 1)]
+    assert history_of(store, run)["skip_reasons"] == {ANIME: 1}
+
+
+def test_quiet_runs_keep_skip_counts_but_not_rows(world):
+    store, engine, trakt, simkl = world
+    approve_history(store)
+    trakt.user_watch("t0", JAN)
+    sync(engine)
+    simkl.user_unwatch("s0")
+
+    quiet = history_of(store, sync(engine))
+    assert quiet["skip_reasons"] == {"unwatched on simkl": 1} and quiet["skips"] == []
+
+    trakt.user_watch("t1", FEB)
+    busy = history_of(store, sync(engine))
+    assert [s["reason"] for s in busy["skips"]] == ["unwatched on simkl"]

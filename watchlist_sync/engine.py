@@ -387,7 +387,10 @@ class Engine:
             "adds": dict(adds),
             "skip_reasons": dict(reasons),
             "ops": [{**entry(o.service, o.key), "watched_at": o.watched_at} for o in result.ops],
-            "skips": [{**entry(s.service, s.key), "reason": s.reason} for s in result.skips[:MAX_STORED_SKIPS]],
+            # A quiet run repeats the last run's skips every 15 minutes; its counts are enough.
+            "skips": [{**entry(s.service, s.key), "reason": s.reason} for s in result.skips[:MAX_STORED_SKIPS]]
+            if dry_run or result.ops
+            else [],
         }
 
 

@@ -101,6 +101,8 @@
 </table>
 {% if skipped > history.skips[:shown] | length %}<p class="muted">{{ skipped - history.skips[:shown] | length }} more not shown.</p>{% endif %}
 </div>
+{% elif skipped %}
+<p class="muted">Left-alone items are listed only on runs that add plays or await approval.</p>
 {% endif %}
 {% endif %}
 {% endblock %}
