@@ -126,3 +126,56 @@ class Plan:
     ops: tuple[Op, ...]
     conflicts: tuple[Conflict, ...]
     skips: tuple[Skip, ...]
+
+
+@dataclass(frozen=True)
+class WatchKey:
+    """One movie (season and episode both None) or one episode of a show."""
+
+    title_id: TitleId
+    season: int | None = None
+    episode: int | None = None
+
+    def sort_key(self) -> tuple[int, int, int]:
+        return (self.title_id, -1 if self.season is None else self.season, -1 if self.episode is None else self.episode)
+
+
+@dataclass(frozen=True)
+class RemoteWatch:
+    """One play as a service reports it."""
+
+    item: RemoteItem
+    season: int | None
+    episode: int | None
+    watched_at: str
+
+
+@dataclass(frozen=True)
+class HistoryView:
+    """What the history planner needs to know about one service. `rejected`
+    holds keys the service answered "not found" for, so they are not resent
+    every run."""
+
+    live: Mapping[WatchKey, str]
+    snapshot: frozenset[WatchKey]
+    rejected: frozenset[WatchKey] = frozenset()
+
+
+@dataclass(frozen=True)
+class HistoryOp:
+    service: ServiceName
+    key: WatchKey
+    watched_at: str
+
+
+@dataclass(frozen=True)
+class HistorySkip:
+    service: ServiceName
+    key: WatchKey
+    reason: str
+
+
+@dataclass(frozen=True)
+class HistoryPlan:
+    ops: tuple[HistoryOp, ...]
+    skips: tuple[HistorySkip, ...]
