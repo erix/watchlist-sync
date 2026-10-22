@@ -1,0 +1,77 @@
+# Daily database backup to TrueNAS. The folder must exist and be owned by the
+# app's user (10001), because the share maps root to an unprivileged user.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: watchlist-sync-backup-nfs-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  mountOptions:
+    - nfsvers=4.1
+  nfs:
+    server: 192.168.1.179
+    path: /mnt/tank/backups/watchlist-sync
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: watchlist-sync-backup
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: watchlist-sync-backup-nfs-pv
+  storageClassName: ""
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: watchlist-sync-backup
+spec:
+  schedule: "30 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsUser: 10001
+            runAsGroup: 10001
+          containers:
+            - name: backup
+              image: ghcr.io/erix/watchlist-sync:latest
+              command: ["/app/.venv/bin/python", "-m", "watchlist_sync.backup", "/backup"]
+              env:
+                - name: WS_DATA_DIR
+                  value: /data
+                - name: WS_BACKUP_KEEP
+                  value: "14"
+              volumeMounts:
+                - name: data
+                  mountPath: /data
+                - name: backup
+                  mountPath: /backup
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 10m
+                limits:
+                  memory: 256Mi
+          volumes:
+            # The app's RWO local-path volume: this pod is scheduled onto the same node.
+            - name: data
+              persistentVolumeClaim:
+                claimName: watchlist-sync-data
+            - name: backup
+              persistentVolumeClaim:
+                claimName: watchlist-sync-backup

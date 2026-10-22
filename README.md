@@ -96,6 +96,23 @@ To keep every sync a dry run, set `WS_DRY_RUN=true`.
 | `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | none | Trakt API app credentials. The secret is optional. |
 | `SIMKL_CLIENT_ID`, `SIMKL_CLIENT_SECRET` | none | Simkl API app credentials. The secret is optional. |
 
+## Backups
+
+A CronJob copies the database to TrueNAS every day at 03:30 UTC, into `/mnt/tank/backups/watchlist-sync` as `watchlist-YYYY-MM-DD.db`. It keeps the newest 14 copies. Each copy is checked with `PRAGMA integrity_check` before it is written to the share.
+
+The backups hold the Trakt and Simkl tokens, so each file is readable only by its owner. The folder must be owned by user and group 10001, because the share maps root to an unprivileged user:
+
+```sh
+# on TrueNAS
+mkdir /mnt/tank/backups/watchlist-sync
+chown 10001:10001 /mnt/tank/backups/watchlist-sync
+chmod 700 /mnt/tank/backups/watchlist-sync
+```
+
+To run a backup now: `kubectl -n watchlist-sync create job --from=cronjob/watchlist-sync-backup backup-now`.
+
+To restore, scale the Deployment to 0, copy a backup over `/data/watchlist.db` on the `watchlist-sync-data` volume, delete any `watchlist.db-wal` and `watchlist.db-shm` next to it, and scale back to 1. The next sync re-reads any service that changed since the backup. A Trakt token refreshed since the backup no longer works, so reconnect Trakt if the status page asks.
+
 ## Rate limits and quotas
 
 - **Trakt:** 1 POST per second and 500 GETs per 5 minutes per user.
@@ -121,4 +138,5 @@ Write an adapter that implements `Adapter` and `OAuthClient` in `watchlist_sync/
 - `watchlist_sync/engine.py` runs a sync: it reads the services, resumes unfinished writes, links titles across services, applies the plan, and commits snapshots. Then it does the same for watch history.
 - `watchlist_sync/db.py` holds the SQLite schema and the store, including title merging.
 - `watchlist_sync/adapters/` holds the Trakt and Simkl adapters and the paced HTTP client.
+- `watchlist_sync/backup.py` writes the daily checked database copy and keeps the newest ones.
 - `tests/test_engine.py` runs the sync scenarios against fake services: one-sided add and remove, conflict, echo, a crash halfway through, and the Chef's Table: Pizza ID mismatch.

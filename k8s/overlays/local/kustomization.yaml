@@ -4,6 +4,7 @@ namespace: watchlist-sync
 resources:
   - ../../base
   - watchlist-sync-sealed.yaml
+  - backup.yaml
 images:
   - name: ghcr.io/erix/watchlist-sync
     newTag: latest
