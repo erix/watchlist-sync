@@ -113,6 +113,13 @@ CREATE TABLE IF NOT EXISTS remote_history (
 CREATE UNIQUE INDEX IF NOT EXISTS remote_history_key
     ON remote_history(service, title_id, IFNULL(season, -1), IFNULL(episode, -1));
 
+-- Shows a service counts episodes of as watched without listing which ones.
+CREATE TABLE IF NOT EXISTS remote_history_opaque (
+    service TEXT NOT NULL,
+    title_id INTEGER NOT NULL REFERENCES titles(id) ON DELETE CASCADE,
+    PRIMARY KEY (service, title_id)
+);
+
 -- Every play each service has held at any history sync. It only grows.
 CREATE TABLE IF NOT EXISTS history_snapshots (
     service TEXT NOT NULL,
@@ -304,7 +311,7 @@ class Store:
                 " history_marker=NULL, needs_history_dry_run=1 WHERE service=?",
                 (service,),
             )
-            for table in ("snapshots", "remote_items", "history_snapshots", "remote_history"):
+            for table in ("snapshots", "remote_items", "history_snapshots", "remote_history", "remote_history_opaque"):
                 c.execute(f"DELETE FROM {table} WHERE service=?", (service,))
 
     # Snapshots and cached remote state
@@ -469,13 +476,24 @@ class Store:
             rows = c.execute("SELECT * FROM remote_history WHERE service=?", (service,))
             return {_key(r): r["watched_at"] for r in rows}
 
-    def replace_remote_history(self, service: ServiceName, live: Mapping[WatchKey, str], marker: str) -> None:
+    def opaque_history(self, service: ServiceName) -> frozenset[TitleId]:
+        with self.tx() as c:
+            rows = c.execute("SELECT title_id FROM remote_history_opaque WHERE service=?", (service,))
+            return frozenset(r["title_id"] for r in rows)
+
+    def replace_remote_history(
+        self, service: ServiceName, live: Mapping[WatchKey, str], opaque: frozenset[TitleId], marker: str
+    ) -> None:
         """Store a fresh fetch together with the marker it was read under."""
         with self.tx() as c:
             c.execute("DELETE FROM remote_history WHERE service=?", (service,))
             c.executemany(
                 "INSERT INTO remote_history(service, title_id, season, episode, watched_at) VALUES (?,?,?,?,?)",
                 [(service, k.title_id, k.season, k.episode, at) for k, at in live.items()],
+            )
+            c.execute("DELETE FROM remote_history_opaque WHERE service=?", (service,))
+            c.executemany(
+                "INSERT INTO remote_history_opaque(service, title_id) VALUES (?,?)", [(service, t) for t in opaque]
             )
             c.execute("UPDATE accounts SET history_marker=? WHERE service=?", (marker, service))
 
@@ -591,7 +609,7 @@ def _merge(c: sqlite3.Connection, keep: TitleId, drop: TitleId) -> None:
     row = c.execute("SELECT title, year, anime FROM titles WHERE id=?", (drop,)).fetchone()
     _fill_title(c, keep, row["title"], row["year"], bool(row["anime"]))
     c.execute("UPDATE title_ids SET title_id=? WHERE title_id=?", (keep, drop))
-    for table in ("remote_items", "snapshots", "unmatched", "remote_history", "history_snapshots"):
+    for table in ("remote_items", "snapshots", "unmatched", "remote_history", "remote_history_opaque", "history_snapshots"):
         c.execute(f"UPDATE OR IGNORE {table} SET title_id=? WHERE title_id=?", (keep, drop))
         c.execute(f"DELETE FROM {table} WHERE title_id=?", (drop,))
     c.execute("UPDATE OR IGNORE conflicts SET title_id=? WHERE title_id=?", (keep, drop))

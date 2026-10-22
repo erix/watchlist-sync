@@ -190,9 +190,10 @@ def test_trakt_history_reads_every_page_of_plays():
         return httpx.Response(200, json=body, headers={"X-Pagination-Page-Count": "1"})
 
     calls = wire(adapter, handler)
-    watches = asyncio.run(adapter.fetch_history())
+    state = asyncio.run(adapter.fetch_history())
 
-    assert [(w.item.title, w.item.kind, w.season, w.episode, w.watched_at) for w in watches] == [
+    assert state.opaque == []
+    assert [(w.item.title, w.item.kind, w.season, w.episode, w.watched_at) for w in state.watches] == [
         ("Heat", Kind.MOVIE, None, None, "2024-01-01T00:00:00.000Z"),
         ("Heat", Kind.MOVIE, None, None, "2024-02-01T00:00:00.000Z"),
         ("S", Kind.SHOW, 1, 2, "2024-03-01T00:00:00.000Z"),
@@ -252,11 +253,15 @@ SIMKL_COMPLETED_MOVIES = {
 }
 SIMKL_SHOWS = {
     "shows": [
-        {"status": "watching", "last_watched_at": "2024-02-02T00:00:00Z",
+        {"status": "watching", "last_watched_at": "2024-02-02T00:00:00Z", "watched_episodes_count": 2,
          "show": {"title": "Chef's Table: Pizza", "year": 2022, "ids": {"simkl": 1979391}},
          "seasons": [{"number": 1, "episodes": [{"number": 1, "watched_at": "2024-02-01T00:00:00Z"},
                                                 {"number": 2, "watched_at": "2024-02-02T00:00:00Z"}]}]},
-        {"status": "plantowatch", "show": {"title": "Unseen", "year": 2020, "ids": {"simkl": 8}}},
+        {"status": "plantowatch", "watched_episodes_count": 0,
+         "show": {"title": "Unseen", "year": 2020, "ids": {"simkl": 8}}},
+        # Live Simkl lists no seasons for completed and dropped shows.
+        {"status": "completed", "last_watched_at": "2023-05-01T00:00:00Z", "watched_episodes_count": 208,
+         "show": {"title": "How I Met Your Mother", "year": 2005, "ids": {"simkl": 9, "tvdb": 75760}}},
     ]
 }
 
@@ -270,13 +275,14 @@ def test_simkl_history_reads_completed_movies_and_watched_episodes():
         return httpx.Response(200, json=SIMKL_SHOWS)
 
     calls = wire(adapter, handler)
-    watches = asyncio.run(adapter.fetch_history())
+    state = asyncio.run(adapter.fetch_history())
 
-    assert [(w.item.title, w.item.kind, w.item.anime, w.season, w.episode, w.watched_at) for w in watches] == [
+    assert [(w.item.title, w.item.kind, w.item.anime, w.season, w.episode, w.watched_at) for w in state.watches] == [
         ("Heat", Kind.MOVIE, False, None, None, "2024-01-01T00:00:00Z"),
         ("Chef's Table: Pizza", Kind.SHOW, False, 1, 1, "2024-02-01T00:00:00Z"),
         ("Chef's Table: Pizza", Kind.SHOW, False, 1, 2, "2024-02-02T00:00:00Z"),
     ]
+    assert [(i.title, i.kind) for i in state.opaque] == [("How I Met Your Mother", Kind.SHOW)]
     assert calls[1].url.path == "/sync/all-items/shows/"
     assert (calls[1].url.params["extended"], calls[1].url.params["episode_watched_at"]) == ("full", "yes")
 

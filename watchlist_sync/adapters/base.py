@@ -7,7 +7,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from ..domain import Kind, RemoteItem, RemoteState, RemoteWatch, Title, TitleId, WatchKey, WriteResult
+from ..domain import HistoryState, Kind, RemoteItem, RemoteState, Title, TitleId, WatchKey, WriteResult
 
 
 class AuthExpired(Exception):
@@ -48,7 +48,7 @@ class Adapter(Protocol):
         """A cheap value that changes whenever the watch history may have changed."""
         ...
 
-    async def fetch_history(self) -> list[RemoteWatch]: ...
+    async def fetch_history(self) -> HistoryState: ...
 
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         """Mark each (title, key, watched_at) watched; return the keys that landed."""

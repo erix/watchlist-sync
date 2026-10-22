@@ -1,5 +1,5 @@
 from watchlist_sync.domain import HistoryOp, HistoryView, WatchKey
-from watchlist_sync.history import ANIME, next_history_snapshot, plan_history
+from watchlist_sync.history import ANIME, OPAQUE, next_history_snapshot, plan_history
 
 MOVIE = WatchKey(1)
 EPISODE = WatchKey(2, 1, 3)
@@ -78,6 +78,28 @@ def test_play_the_service_rejected_is_not_resent():
     )
     assert result.ops == ()
     assert [s.reason for s in result.skips] == ["simkl did not find it"]
+
+
+def test_episodes_of_a_show_simkl_does_not_list_are_never_added_there():
+    result = plan_history(
+        {
+            "trakt": HistoryView({MOVIE: "2024-01-01T00:00:00Z", EPISODE: "2024-01-02T00:00:00Z"}, frozenset()),
+            "simkl": HistoryView({}, frozenset(), opaque=frozenset({EPISODE.title_id})),
+        },
+        set(),
+        anywhere,
+    )
+    assert [(o.service, o.key) for o in result.ops] == [("simkl", MOVIE)]
+    assert [(s.service, s.key, s.reason) for s in result.skips] == [("simkl", EPISODE, OPAQUE)]
+
+
+def test_show_moving_to_an_unlisted_status_adds_nothing_anywhere():
+    snapshots = {"trakt": frozenset({EPISODE}), "simkl": frozenset({EPISODE, WatchKey(2, 1, 4)})}
+    views = {
+        "trakt": HistoryView({EPISODE: "2024-01-01T00:00:00Z"}, snapshots["trakt"]),
+        "simkl": HistoryView({}, snapshots["simkl"], opaque=frozenset({EPISODE.title_id})),
+    }
+    assert plan_history(views, set(), anywhere).ops == ()
 
 
 def test_nothing_to_do_when_both_services_agree():

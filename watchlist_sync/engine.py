@@ -288,14 +288,15 @@ class Engine:
             marker = await adapter.history_marker()
             if not force and marker == self.store.account(name).history_marker:
                 continue
-            watches = await adapter.fetch_history()
-            title_of = self._resolve_all([w.item for w in watches])
+            state = await adapter.fetch_history()
+            title_of = self._resolve_all([w.item for w in state.watches] + state.opaque)
             live: dict[WatchKey, str] = {}
-            for w in watches:
+            for w in state.watches:
                 key = WatchKey(title_of[_identity(w.item)], w.season, w.episode)
                 if key not in live or w.watched_at > live[key]:
                     live[key] = w.watched_at
-            self.store.replace_remote_history(name, live, marker)
+            opaque = frozenset(title_of[_identity(i)] for i in state.opaque)
+            self.store.replace_remote_history(name, live, opaque, marker)
 
     def _resolve_all(self, items: list[RemoteItem]) -> dict[tuple, TitleId]:
         """Resolve each distinct item once: a history holds one item per play,
@@ -308,7 +309,12 @@ class Engine:
 
     def _history_views(self) -> dict[ServiceName, HistoryView]:
         return {
-            s: HistoryView(self.store.remote_history(s), self.store.history_snapshot(s), self.store.rejected_history(s))
+            s: HistoryView(
+                self.store.remote_history(s),
+                self.store.history_snapshot(s),
+                self.store.rejected_history(s),
+                self.store.opaque_history(s),
+            )
             for s in self.adapters
         }
 

@@ -16,7 +16,7 @@ import httpx
 
 from .. import __version__
 from ..auth import expires_at
-from ..domain import Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
+from ..domain import HistoryState, Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
 from .base import AuthExpired, Token, history_body
 from .http import AuthedClient, Pace, PacedClient
 
@@ -173,10 +173,13 @@ class SimklAdapter:
         data = await self._activities()
         return json.dumps([(data.get(section) or {}).get("all") for section in ("movies", "tv_shows")])
 
-    async def fetch_history(self) -> list[RemoteWatch]:
+    async def fetch_history(self) -> HistoryState:
         """Completed movies and every watched episode of non-anime shows. Anime
-        is a separate type on Simkl and is not requested."""
+        is a separate type on Simkl and is not requested. Simkl lists no
+        episodes for some shows (completed and dropped ones, in practice) while
+        counting them watched; those are reported as opaque."""
         watches: list[RemoteWatch] = []
+        opaque: list[RemoteItem] = []
         movies = (await self.api.call("GET", "/sync/all-items/movies/completed")).json() or {}
         for entry in movies.get("movies") or []:
             if entry.get("last_watched_at"):
@@ -188,13 +191,17 @@ class SimklAdapter:
         ).json() or {}
         for entry in shows.get("shows") or []:
             item = _library_item("shows", entry)
+            listed = 0
             for season in entry.get("seasons") or []:
                 for episode in season.get("episodes") or []:
+                    listed += 1
                     watched_at = episode.get("watched_at") or entry.get("last_watched_at")
                     if season.get("number") is None or episode.get("number") is None or not watched_at:
                         continue
                     watches.append(RemoteWatch(item, season["number"], episode["number"], watched_at))
-        return watches
+            if listed < (entry.get("watched_episodes_count") or 0):
+                opaque.append(item)
+        return HistoryState(watches, opaque)
 
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()

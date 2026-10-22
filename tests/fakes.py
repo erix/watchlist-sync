@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from watchlist_sync.domain import (
+    HistoryState,
     Kind,
     RemoteItem,
     RemoteState,
@@ -48,6 +49,8 @@ class FakeService:
         self.history_fetches = 0
         self.history_writes: list[tuple[str, int | None, int | None, str]] = []
         self.history_crash_after: int | None = None
+        # Shows counted as watched whose episodes are not listed.
+        self.opaque: set[str] = set()
 
     # The user acting on the service directly.
 
@@ -107,9 +110,12 @@ class FakeService:
     async def history_marker(self) -> str:
         return str(self.history_version)
 
-    async def fetch_history(self) -> list[RemoteWatch]:
+    async def fetch_history(self) -> HistoryState:
         self.history_fetches += 1
-        return [RemoteWatch(self._item(n, "watchlist"), s, e, at) for (n, s, e), at in sorted(self.plays.items(), key=str)]
+        return HistoryState(
+            [RemoteWatch(self._item(n, "watchlist"), s, e, at) for (n, s, e), at in sorted(self.plays.items(), key=str)],
+            [self._item(n, "watchlist") for n in sorted(self.opaque)],
+        )
 
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()

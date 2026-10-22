@@ -9,7 +9,7 @@ import httpx
 
 from .. import __version__
 from ..auth import expires_at
-from ..domain import Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
+from ..domain import HistoryState, Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
 from .base import AuthExpired, Token, history_body
 from .http import AuthedClient, Pace, PacedClient
 
@@ -133,7 +133,7 @@ class TraktAdapter:
         data = await self._last_activities()
         return json.dumps([data["movies"].get("watched_at"), data["episodes"].get("watched_at")])
 
-    async def fetch_history(self) -> list[RemoteWatch]:
+    async def fetch_history(self) -> HistoryState:
         # /sync/watched/shows no longer returns seasons, so read the plays.
         watches: list[RemoteWatch] = []
         for section, kind in (("movies", Kind.MOVIE), ("episodes", Kind.SHOW)):
@@ -152,7 +152,7 @@ class TraktAdapter:
                     elif episode.get("season") is not None and episode.get("number") is not None:
                         watches.append(RemoteWatch(_item(kind, media), episode["season"], episode["number"], watched_at))
                 page += 1
-        return watches
+        return HistoryState(watches)
 
     async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
         landed: set[WatchKey] = set()

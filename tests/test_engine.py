@@ -7,6 +7,7 @@ from tests.fakes import Crash, Entry, FakeService
 from watchlist_sync.db import Store
 from watchlist_sync.domain import Action, Kind
 from watchlist_sync.engine import Engine
+from watchlist_sync.history import OPAQUE
 
 MOVIES = [
     ("Arrival", 2016, "tt2543164", "329865"),
@@ -345,6 +346,27 @@ def test_history_crash_halfway_resumes_without_duplicate_plays_and_keeps_the_wat
     assert plan_of(store, run)["ops"] == []
     assert sorted(n for n, _, _, _ in simkl.history_writes) == ["s0", "s1", "s2", "s3"]
     assert simkl.plays[("s3", None, None)] == "2024-01-04T00:00:00Z"
+
+
+def test_show_simkl_does_not_list_episodes_of_gets_no_simkl_adds(tmp_path):
+    himym = {"tvdb": "75760"}
+    trakt = FakeService("trakt", [Entry("t-himym", Kind.SHOW, "How I Met Your Mother", 2005, himym)])
+    simkl = FakeService("simkl", [Entry("s-himym", Kind.SHOW, "How I Met Your Mother", 2005, himym)])
+    store = Store(tmp_path / "opaque.db")
+    for s in ("trakt", "simkl"):
+        store.connect(s, "access", "refresh", "2099-01-01T00:00:00+00:00", None)
+        store.update_account(s, needs_dry_run=0, needs_history_dry_run=0)
+    engine = Engine(store, {"trakt": trakt, "simkl": simkl})
+    simkl.opaque.add("s-himym")
+    trakt.user_watch("t-himym", JAN, season=1, episode=1)
+    trakt.user_watch("t-himym", FEB, season=1, episode=2)
+
+    for _ in range(2):
+        fetches = simkl.history_fetches
+        run = sync(engine)
+        assert simkl.history_writes == [] and trakt.history_writes == []
+        assert history_of(store, run)["skip_reasons"] == {OPAQUE: 2}
+    assert simkl.history_fetches == fetches, "second run refetched Simkl with an unchanged marker"
 
 
 def test_anime_history_is_reported_and_not_written(tmp_path):
