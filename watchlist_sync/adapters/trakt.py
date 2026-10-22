@@ -9,8 +9,8 @@ import httpx
 
 from .. import __version__
 from ..auth import expires_at
-from ..domain import Kind, RemoteItem, RemoteState, Title, WriteResult, clean_ids
-from .base import AuthExpired, Token
+from ..domain import Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
+from .base import AuthExpired, Token, history_body
 from .http import AuthedClient, Pace, PacedClient
 
 API = "https://api.trakt.tv"
@@ -20,6 +20,8 @@ PACE = Pace(get_interval=0.6, post_interval=1.1)
 WRITE_IDS = {Kind.MOVIE: ("trakt", "imdb", "tmdb"), Kind.SHOW: ("trakt", "imdb", "tmdb", "tvdb")}
 SECTION = {Kind.MOVIE: "movies", Kind.SHOW: "shows"}
 BATCH = 100
+# The server may cap this lower; X-Pagination-Page-Count is what counts.
+HISTORY_PAGE = 1000
 
 
 def _headers(client_id: str) -> dict[str, str]:
@@ -87,9 +89,17 @@ class TraktAdapter:
     def __init__(self, client_id: str, tokens):
         self.http = PacedClient("trakt", API, PACE, _headers(client_id))
         self.api = AuthedClient(self.http, tokens)
+        self._activities: dict | None = None
+
+    async def _last_activities(self) -> dict:
+        # Read once per adapter, which lives for one sync, so the watchlist and
+        # history markers cost a single call.
+        if self._activities is None:
+            self._activities = (await self.api.call("GET", "/sync/last_activities")).json()
+        return self._activities
 
     async def activity_marker(self) -> str:
-        data = (await self.api.call("GET", "/sync/last_activities")).json()
+        data = await self._last_activities()
         # Watching a title can drop it from the watchlist, so watch times count too.
         return json.dumps(
             [
@@ -118,6 +128,42 @@ class TraktAdapter:
 
     async def add(self, titles: list[Title]) -> WriteResult:
         return await self._write("/sync/watchlist", titles)
+
+    async def history_marker(self) -> str:
+        data = await self._last_activities()
+        return json.dumps([data["movies"].get("watched_at"), data["episodes"].get("watched_at")])
+
+    async def fetch_history(self) -> list[RemoteWatch]:
+        # /sync/watched/shows no longer returns seasons, so read the plays.
+        watches: list[RemoteWatch] = []
+        for section, kind in (("movies", Kind.MOVIE), ("episodes", Kind.SHOW)):
+            page, pages = 1, 1
+            while page <= pages:
+                response = await self.api.call(
+                    "GET", f"/sync/history/{section}", params={"page": page, "limit": HISTORY_PAGE}
+                )
+                pages = int(response.headers.get("X-Pagination-Page-Count", "1"))
+                for row in response.json():
+                    media, episode, watched_at = row.get(kind.value), row.get("episode") or {}, row.get("watched_at")
+                    if not media or not watched_at:
+                        continue
+                    if kind is Kind.MOVIE:
+                        watches.append(RemoteWatch(_item(kind, media), None, None, watched_at))
+                    elif episode.get("season") is not None and episode.get("number") is not None:
+                        watches.append(RemoteWatch(_item(kind, media), episode["season"], episode["number"], watched_at))
+                page += 1
+        return watches
+
+    async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
+        landed: set[WatchKey] = set()
+        for start in range(0, len(entries), BATCH):
+            batch = entries[start : start + BATCH]
+            data = (await self.api.call("POST", "/sync/history", json=history_body(batch, _write_ids))).json()
+            not_found = data.get("not_found") or {}
+            for t, key, _ in batch:
+                if not any(_same(t, entry.get("ids") or {}) for entry in not_found.get(SECTION[t.kind]) or []):
+                    landed.add(key)
+        return landed
 
     async def remove(self, titles: list[Title]) -> WriteResult:
         return await self._write("/sync/watchlist/remove", titles)

@@ -16,8 +16,8 @@ import httpx
 
 from .. import __version__
 from ..auth import expires_at
-from ..domain import Kind, RemoteItem, RemoteState, Title, WriteResult, clean_ids
-from .base import AuthExpired, Token
+from ..domain import Kind, RemoteItem, RemoteState, RemoteWatch, Title, WatchKey, WriteResult, clean_ids
+from .base import AuthExpired, Token, history_body
 from .http import AuthedClient, Pace, PacedClient
 
 API = "https://api.simkl.com"
@@ -112,9 +112,16 @@ class SimklAdapter:
             params={"client_id": client_id, "app-name": APP_NAME, "app-version": __version__},
         )
         self.api = AuthedClient(self.http, tokens)
+        self._activity: dict | None = None
+
+    async def _activities(self) -> dict:
+        # Read once per adapter, which lives for one sync: the daily quota is small.
+        if self._activity is None:
+            self._activity = (await self.api.call("GET", "/sync/activities")).json() or {}
+        return self._activity
 
     async def activity_marker(self) -> str:
-        data = (await self.api.call("GET", "/sync/activities")).json()
+        data = await self._activities()
         buckets = {}
         for section in ("movies", "tv_shows", "anime"):
             block = data.get(section) or {}
@@ -161,6 +168,44 @@ class SimklAdapter:
                 else:
                     ok.add(t.id)
         return WriteResult(frozenset(ok), frozenset(missing))
+
+    async def history_marker(self) -> str:
+        data = await self._activities()
+        return json.dumps([(data.get(section) or {}).get("all") for section in ("movies", "tv_shows")])
+
+    async def fetch_history(self) -> list[RemoteWatch]:
+        """Completed movies and every watched episode of non-anime shows. Anime
+        is a separate type on Simkl and is not requested."""
+        watches: list[RemoteWatch] = []
+        movies = (await self.api.call("GET", "/sync/all-items/movies/completed")).json() or {}
+        for entry in movies.get("movies") or []:
+            if entry.get("last_watched_at"):
+                watches.append(RemoteWatch(_library_item("movies", entry), None, None, entry["last_watched_at"]))
+        shows = (
+            await self.api.call(
+                "GET", "/sync/all-items/shows/", params={"extended": "full", "episode_watched_at": "yes"}
+            )
+        ).json() or {}
+        for entry in shows.get("shows") or []:
+            item = _library_item("shows", entry)
+            for season in entry.get("seasons") or []:
+                for episode in season.get("episodes") or []:
+                    watched_at = episode.get("watched_at") or entry.get("last_watched_at")
+                    if season.get("number") is None or episode.get("number") is None or not watched_at:
+                        continue
+                    watches.append(RemoteWatch(item, season["number"], episode["number"], watched_at))
+        return watches
+
+    async def add_history(self, entries: list[tuple[Title, WatchKey, str]]) -> set[WatchKey]:
+        landed: set[WatchKey] = set()
+        for start in range(0, len(entries), BATCH):
+            batch = entries[start : start + BATCH]
+            data = (await self.api.call("POST", "/sync/history", json=history_body(batch, _write_ids))).json() or {}
+            rejected = [e for found in (data.get("not_found") or {}).values() for e in found or []]
+            for t, key, _ in batch:
+                if not any(_same(t, e.get("ids") or {}) for e in rejected):
+                    landed.add(key)
+        return landed
 
     async def lookup(self, title: Title) -> list[RemoteItem]:
         for ns in ("simkl", "imdb", "tmdb", "tvdb", "mal", "anidb", "anilist"):
