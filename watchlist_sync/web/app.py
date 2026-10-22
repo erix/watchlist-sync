@@ -64,7 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.post("/sync")
-    def sync_now(dry_run: bool = Form(False)):
+    async def sync_now(dry_run: bool = Form(False)):
         runtime.spawn(runtime.sync(dry_run=dry_run))
         return back()
 
@@ -77,7 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return render(request, "run.html", run=run, plan=plan)
 
     @app.post("/runs/{run_id}/approve")
-    def approve(run_id: int):
+    async def approve(run_id: int):
         runtime.spawn(runtime.approve(run_id))
         return back()
 
